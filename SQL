@@ -1,1 +1,87 @@
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                 BASE TABLE
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+CREATE TABLE STL_CHURN_TABLE AS
+SELECT *
+FROM (
+    SELECT
+        GAM.CIF_ID,
+        GAM.ACID,
+        GAM.SCHM_CODE,
+        GAM.ACCT_CLS_FLG,
+        GAM.ACCT_OPN_DATE,
+        ADD_MONTHS(TRUNC(GAM.ACCT_OPN_DATE), -6) AS ACCT_OPN_DATE_6,
+        FLOOR((SYSDATE - C.DATE_OF_BIRTH) / 365) AS CUST_AGE,
+        FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 365) AS AGE_WITH_BANK,
+        FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 30.42) AS AGE_WITH_BANK_IN_MONTHS,
+        C.SEGMENTATION_CLASS,
+        LAM.DIS_AMT,
+        LAM.REP_PERD_MTHS,
+        M.OTG_TRANSACTING,
+        GAC.DPD_CNTR,
+        ROW_NUMBER() OVER (PARTITION BY GAM.CIF_ID ORDER BY GAM.ACCT_OPN_DATE DESC) AS RN
+    FROM TBAADM.GAM@FINACLE GAM
+    LEFT JOIN TBAADM.LAM@FINACLE LAM ON LAM.ACID = GAM.ACID
+    LEFT JOIN TBAADM.CMG@FINACLE C ON C.CIF_ID = GAM.CIF_ID
+    LEFT JOIN EDW.MDM_IMKE M ON GAM.CIF_ID = M.CUSTOMERID
+    LEFT JOIN TBAADM.GAC@FINACLE GAC ON GAC.ACID = GAM.ACID
+    LEFT JOIN FINACLE_ARCHIVE.CUST_EOD_DATA@FINACLE EOD ON EOD.ACID = GAM.ACID
+    WHERE GAM.SCHM_CODE = 'LAL34'
+      -- AND GAM.CIF_ID = '0390086'
+      AND LAM.REP_PERD_MTHS = 1
+)
+WHERE RN = 1;
 
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+SELECT
+	GAM.CIF_ID,
+	GAM.ACID,
+	GAM.SCHM_CODE,
+    GAM.ACCT_CLS_FLG,
+	GAM.ACCT_OPN_DATE,
+	ADD_MONTHS(TRUNC(GAM.ACCT_OPN_DATE),-6) AS ACCT_OPN_DATE_6,
+	FLOOR((SYSDATE - C.DATE_OF_BIRTH) / 365) AS CUST_AGE,
+	FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 365) AS AGE_WITH_BANK,
+	FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 30.42) AS AGE_WITH_BANK_IN_MONTHS,
+	C.SEGMENTATION_CLASS,
+    LAM.DIS_AMT,
+    LAM.REP_PERD_MTHS,
+ROW_NUMBER() OVER (PARTITION BY GAM.CIF_ID
+ORDER BY
+	GAM.ACCT_OPN_DATE) AS RN,
+	M.OTG_TRANSACTING,
+	GAC.DPD_CNTR
+FROM
+	TBAADM.GAM@FINACLE GAM
+LEFT JOIN TBAADM.LAM@FINACLE LAM ON
+	LAM.ACID = GAM.ACID
+LEFT JOIN TBAADM.CMG@FINACLE C ON
+	C.CIF_ID = GAM.CIF_ID
+LEFT JOIN EDW.MDM_IMKE M ON
+	GAM.CIF_ID = M.CUSTOMERID
+LEFT JOIN TBAADM.GAC@FINACLE ON
+	GAC.ACID = GAM.ACID
+LEFT JOIN FINACLE_ARCHIVE.CUST_EOD_DATA@FINACLE EOD ON
+	EOD.ACID = GAM.ACID
+WHERE
+	GAM.SCHM_CODE = 'LAL34'
+	-- AND GAM.CIF_ID = '0390086'
+GROUP BY
+	GAM.CIF_ID,
+	GAM.ACID,
+	GAM.ACCT_CLS_FLG,
+	GAM.SCHM_CODE,
+	GAM.ACCT_OPN_DATE,
+	C.DATE_OF_BIRTH,
+	C.CUST_OPN_DATE,
+	C.SEGMENTATION_CLASS,
+	M.OTG_TRANSACTING,
+    LAM.DIS_AMT,
+    LAM.REP_PERD_MTHS,
+	GAC.DPD_CNTR;
+
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
