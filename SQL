@@ -3,6 +3,7 @@
                                  BASE TABLE
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
+
 CREATE TABLE STL_CHURN_TABLE AS
 SELECT *
 FROM (
@@ -82,6 +83,67 @@ GROUP BY
     LAM.DIS_AMT,
     LAM.REP_PERD_MTHS,
 	GAC.DPD_CNTR;
+
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                                  TRANSACTIONS
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+
+CREATE TABLE STL_CHURN_TRANS AS
+WITH MASTER_CTE AS (
+    SELECT * 
+    FROM STL_CHURN_TABLE 
+    -- WHERE CIF_ID = '0390086'
+),
+DATES AS (
+    SELECT
+        CIF_ID,
+        ACID,
+        MAX(ACCT_OPN_DATE) AS MAX_ACCT_OPN_DATE,
+        MIN(ACCT_OPN_DATE_7) AS MIN_7_MONTHS_AGO
+    FROM MASTER_CTE
+    GROUP BY CIF_ID, ACID
+)
+SELECT
+    D.CIF_ID,
+    HTD.ACID,
+    D.MAX_ACCT_OPN_DATE,
+    D.MIN_7_MONTHS_AGO,
+    HTD.TRAN_ID,
+    HTD.TRAN_DATE,
+    HTD.PART_TRAN_TYPE,
+    HTD.TRAN_AMT,
+    custom.commonpackage.getconvertedamount@finacle (
+        '01',
+        HTD.TRAN_AMT,
+        HTD.TRAN_CRNCY_CODE,
+        'KES',
+        'MID',
+        HTD.TRAN_DATE
+    ) AS TRAN_AMT_LCY,
+    HTD.TRAN_PARTICULAR
+FROM DATES D
+LEFT JOIN TBAADM.GAM@finacle GAM 
+    ON D.CIF_ID = GAM.CIF_ID
+LEFT JOIN TBAADM.HTD@finacle HTD 
+    ON HTD.ACID = GAM.ACID
+   AND HTD.TRAN_DATE BETWEEN D.MIN_7_MONTHS_AGO AND D.MAX_ACCT_OPN_DATE
+WHERE GAM.CIF_ID IN (SELECT CIF_ID FROM DATES)
+  AND GAM.SCHM_CODE NOT LIKE 'L%' 
+  AND GAM.SCHM_CODE NOT IN ('CAL29','SBL01','SBL02','SBL03','CAL21','CAF21')
+  AND HTD.PSTD_FLG = 'Y'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REVERSAL%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE 'REV%'
+  AND UPPER(GAM.SCHM_CODE) NOT LIKE 'L%' 
+  AND UPPER(GAM.SCHM_CODE) NOT LIKE 'T%' 
+  AND UPPER(GAM.SCHM_CODE) NOT LIKE 'OD%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%DISBURSEMENT%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%FROM%BANCASSURANCE%LIMITED%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%LOAN%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%TOP%UP%WP%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REFUND%'
+  AND UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REPAY%';
 
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
