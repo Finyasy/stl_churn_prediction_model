@@ -13,7 +13,7 @@ FROM (
         GAM.SCHM_CODE,
         GAM.ACCT_CLS_FLG,
         GAM.ACCT_OPN_DATE,
-        ADD_MONTHS(TRUNC(GAM.ACCT_OPN_DATE), -6) AS ACCT_OPN_DATE_6,
+        ADD_MONTHS(TRUNC(GAM.ACCT_OPN_DATE), -7) AS ACCT_OPN_DATE_7,
         FLOOR((SYSDATE - C.DATE_OF_BIRTH) / 365) AS CUST_AGE,
         FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 365) AS AGE_WITH_BANK,
         FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 30.42) AS AGE_WITH_BANK_IN_MONTHS,
@@ -43,7 +43,7 @@ SELECT
 	GAM.SCHM_CODE,
     GAM.ACCT_CLS_FLG,
 	GAM.ACCT_OPN_DATE,
-	ADD_MONTHS(TRUNC(GAM.ACCT_OPN_DATE),-6) AS ACCT_OPN_DATE_6,
+	ADD_MONTHS(TRUNC(GAM.ACCT_OPN_DATE),-7) AS ACCT_OPN_DATE_7,
 	FLOOR((SYSDATE - C.DATE_OF_BIRTH) / 365) AS CUST_AGE,
 	FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 365) AS AGE_WITH_BANK,
 	FLOOR((SYSDATE - C.CUST_OPN_DATE)/ 30.42) AS AGE_WITH_BANK_IN_MONTHS,
@@ -83,6 +83,28 @@ GROUP BY
     LAM.DIS_AMT,
     LAM.REP_PERD_MTHS,
 	GAC.DPD_CNTR;
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+                              CUSTOMERS WITH LIMITS NOT TAKING STL LOANS
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+SELECT DISTINCT
+    GAM.CIF_ID,
+    FLOOR((SYSDATE - C.DATE_OF_BIRTH) / 365) AS CUST_AGE,
+    FLOOR((SYSDATE - C.CUST_OPN_DATE) / 365) AS AGE_WITH_BANK,
+    FLOOR((SYSDATE - C.CUST_OPN_DATE) / 30.42) AS AGE_WITH_BANK_IN_MONTHS,
+    C.SEGMENTATION_CLASS,
+    M.OTG_TRANSACTING,
+    SLF.FEB_ADJUSTED_LIMIT,
+    SLF.JULY_ADJUSTED_LIMIT
+FROM
+    STL_LIMITS_FEB SLF
+JOIN TBAADM.GAM@FINACLE GAM ON
+    SLF.CIF_ID = GAM.CIF_ID
+LEFT JOIN TBAADM.CMG@FINACLE C ON
+    C.CIF_ID = GAM.CIF_ID
+LEFT JOIN EDW.MDM_IMKE M ON
+    GAM.CIF_ID = M.CUSTOMERID;
 
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
@@ -147,3 +169,49 @@ WHERE GAM.CIF_ID IN (SELECT CIF_ID FROM DATES)
 
 ----------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------
+              CUSTOMERS WITH LIMITS NOT TAKING STL LOANS
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+
+
+CREATE TABLE STL_CHURN_FEB_LIMITS_TRANS AS
+SELECT
+    D.CIF_ID,
+    HTD.TRAN_ID,
+    HTD.TRAN_DATE,
+    HTD.PART_TRAN_TYPE,
+    HTD.TRAN_AMT,
+    custom.commonpackage.getconvertedamount@finacle (
+        '01',
+        HTD.TRAN_AMT,
+        HTD.TRAN_CRNCY_CODE,
+        'KES',
+        'MID',
+        HTD.TRAN_DATE
+    ) AS TRAN_AMT_LCY,
+    HTD.TRAN_PARTICULAR
+FROM (
+    SELECT DISTINCT CIF_ID
+    FROM STL_LIMITS_FEB
+) D
+JOIN TBAADM.GAM@finacle GAM 
+    ON D.CIF_ID = GAM.CIF_ID
+    AND GAM.SCHM_CODE NOT LIKE 'L%'
+    AND GAM.SCHM_CODE NOT IN ('CAL29','SBL01','SBL02','SBL03','CAL21','CAF21')
+    AND UPPER(GAM.SCHM_CODE) NOT LIKE 'T%' 
+    AND UPPER(GAM.SCHM_CODE) NOT LIKE 'OD%'
+JOIN TBAADM.HTD@finacle HTD 
+    ON HTD.ACID = GAM.ACID
+    AND HTD.PSTD_FLG = 'Y'
+    AND HTD.TRAN_DATE BETWEEN TO_DATE('2024-08-01', 'YYYY-MM-DD') AND TO_DATE('2025-01-31', 'YYYY-MM-DD')
+    AND (
+        -- HTD.TRAN_PARTICULAR IS NOT NULL AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REVERSAL%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE 'REV%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%DISBURSEMENT%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%FROM%BANCASSURANCE%LIMITED%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%LOAN%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%TOP%UP%WP%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REFUND%' AND
+        UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REPAY%'
+    );
