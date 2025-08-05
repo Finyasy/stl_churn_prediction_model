@@ -215,3 +215,38 @@ JOIN TBAADM.HTD@finacle HTD
         UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REFUND%' AND
         UPPER(HTD.TRAN_PARTICULAR) NOT LIKE '%REPAY%'
     );
+
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+              END OF DAY BALANCES
+----------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------
+
+WITH MASTER_CTE AS
+(
+	SELECT * FROM STL_CHURN_TABLE 
+    -- WHERE CIF_ID = '0390086'
+),
+DATES AS
+(
+SELECT
+	CIF_ID,
+	MAX(ACCT_OPN_DATE)MAX_ACCT_OPN_DATE,
+	MIN(ACCT_OPN_DATE_7)MIN_7_MONTHS_AGO
+FROM
+	MASTER_CTE MC
+GROUP BY
+	CIF_ID
+)
+SELECT 
+ 	EAB.EOD_DATE,
+	EAB.TRAN_DATE_BAL,
+      D.*,
+	custom.commonpackage.getconvertedamount@FINACLE ('01',EAB.TRAN_DATE_BAL, EAB.EAB_CRNCY_CODE,'KES','MID',EAB.EOD_DATE)TRAN_DATE_BAL_LCY
+FROM TBAADM.EAB@FINACLE EAB
+ LEFT JOIN TBAADM.GAM@FINACLE GAM ON EAB.ACID = GAM.ACID
+ LEFT JOIN 	DATES D ON GAM.CIF_ID = D.CIF_ID
+ WHERE EOD_DATE BETWEEN D.MIN_7_MONTHS_AGO AND D.MAX_ACCT_OPN_DATE
+ AND D.CIF_ID IN (SELECT CIF_ID FROM STL_CHURN_TABLE)
+ 
+ CREATE TABLE 
